@@ -115,7 +115,7 @@ func GetCoinPool() ([]CoinInfo, error) {
 			time.Sleep(2 * time.Second) // 重试前等待2秒
 		}
 
-		coins, err := fetchCoinPool(coinPoolConfig.APIURL, coinPoolConfig.Timeout)
+		coins, err := fetchCoinPool()
 		if err == nil {
 			if attempt > 1 {
 				log.Printf("✓ 第%d次重试成功", attempt)
@@ -144,34 +144,15 @@ func GetCoinPool() ([]CoinInfo, error) {
 	return convertSymbolsToCoins(defaultMainstreamCoins), nil
 }
 
-// GetCoinPoolWithURL 使用自定义 API URL 获取币种池（不影响全局配置）
-func GetCoinPoolWithURL(apiURL string) ([]CoinInfo, error) {
-	apiURL = strings.TrimSpace(apiURL)
-	if apiURL == "" {
-		return GetCoinPool()
-	}
-
-	coins, err := fetchCoinPool(apiURL, coinPoolConfig.Timeout)
-	if err != nil {
-		return nil, err
-	}
-	return coins, nil
-}
-
 // fetchCoinPool 实际执行币种池请求
-func fetchCoinPool(apiURL string, timeout time.Duration) ([]CoinInfo, error) {
-	apiURL = strings.TrimSpace(apiURL)
-	if apiURL == "" {
-		return nil, fmt.Errorf("未配置币种池API URL")
-	}
-
-	log.Printf("🔄 正在请求AI500币种池: %s", apiURL)
+func fetchCoinPool() ([]CoinInfo, error) {
+	log.Printf("🔄 正在请求AI500币种池...")
 
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout: coinPoolConfig.Timeout,
 	}
 
-	resp, err := client.Get(apiURL)
+	resp, err := client.Get(coinPoolConfig.APIURL)
 	if err != nil {
 		return nil, fmt.Errorf("请求币种池API失败: %w", err)
 	}
@@ -335,51 +316,6 @@ func GetTopRatedCoins(limit int) ([]string, error) {
 	return symbols, nil
 }
 
-// GetTopRatedCoinsWithURL 使用自定义币种池 API 获取高评分币种
-func GetTopRatedCoinsWithURL(limit int, apiURL string) ([]string, error) {
-	apiURL = strings.TrimSpace(apiURL)
-	if apiURL == "" {
-		return GetTopRatedCoins(limit)
-	}
-
-	coins, err := GetCoinPoolWithURL(apiURL)
-	if err != nil {
-		return nil, err
-	}
-
-	var availableCoins []CoinInfo
-	for _, coin := range coins {
-		if coin.IsAvailable {
-			availableCoins = append(availableCoins, coin)
-		}
-	}
-
-	if len(availableCoins) == 0 {
-		return nil, fmt.Errorf("没有可用的币种")
-	}
-
-	for i := 0; i < len(availableCoins); i++ {
-		for j := i + 1; j < len(availableCoins); j++ {
-			if availableCoins[i].Score < availableCoins[j].Score {
-				availableCoins[i], availableCoins[j] = availableCoins[j], availableCoins[i]
-			}
-		}
-	}
-
-	maxCount := limit
-	if len(availableCoins) < maxCount {
-		maxCount = len(availableCoins)
-	}
-
-	var symbols []string
-	for i := 0; i < maxCount; i++ {
-		symbol := normalizeSymbol(availableCoins[i].Pair)
-		symbols = append(symbols, symbol)
-	}
-
-	return symbols, nil
-}
-
 // normalizeSymbol 标准化币种符号
 func normalizeSymbol(symbol string) string {
 	// 移除空格
@@ -500,7 +436,7 @@ func GetOITopPositions() ([]OIPosition, error) {
 			time.Sleep(2 * time.Second)
 		}
 
-		positions, err := fetchOITop(oiTopConfig.APIURL, oiTopConfig.Timeout)
+		positions, err := fetchOITop()
 		if err == nil {
 			if attempt > 1 {
 				log.Printf("✓ 第%d次重试成功", attempt)
@@ -529,34 +465,15 @@ func GetOITopPositions() ([]OIPosition, error) {
 	return []OIPosition{}, nil
 }
 
-// GetOITopPositionsWithURL 使用自定义 URL 获取 OI Top 数据
-func GetOITopPositionsWithURL(apiURL string) ([]OIPosition, error) {
-	apiURL = strings.TrimSpace(apiURL)
-	if apiURL == "" {
-		return GetOITopPositions()
-	}
-
-	positions, err := fetchOITop(apiURL, oiTopConfig.Timeout)
-	if err != nil {
-		return nil, err
-	}
-	return positions, nil
-}
-
 // fetchOITop 实际执行OI Top请求
-func fetchOITop(apiURL string, timeout time.Duration) ([]OIPosition, error) {
-	apiURL = strings.TrimSpace(apiURL)
-	if apiURL == "" {
-		return nil, fmt.Errorf("未配置OI Top API URL")
-	}
-
-	log.Printf("🔄 正在请求OI Top数据: %s", apiURL)
+func fetchOITop() ([]OIPosition, error) {
+	log.Printf("🔄 正在请求OI Top数据...")
 
 	client := &http.Client{
-		Timeout: timeout,
+		Timeout: oiTopConfig.Timeout,
 	}
 
-	resp, err := client.Get(apiURL)
+	resp, err := client.Get(oiTopConfig.APIURL)
 	if err != nil {
 		return nil, fmt.Errorf("请求OI Top API失败: %w", err)
 	}
@@ -662,22 +579,6 @@ func GetOITopSymbols() ([]string, error) {
 	return symbols, nil
 }
 
-// GetOITopSymbolsWithURL 使用自定义 URL 获取 OI Top 币种列表
-func GetOITopSymbolsWithURL(apiURL string) ([]string, error) {
-	positions, err := GetOITopPositionsWithURL(apiURL)
-	if err != nil {
-		return nil, err
-	}
-
-	var symbols []string
-	for _, pos := range positions {
-		symbol := normalizeSymbol(pos.Symbol)
-		symbols = append(symbols, symbol)
-	}
-
-	return symbols, nil
-}
-
 // MergedCoinPool 合并的币种池（AI500 + OI Top）
 type MergedCoinPool struct {
 	AI500Coins    []CoinInfo          // AI500评分币种
@@ -688,45 +589,31 @@ type MergedCoinPool struct {
 
 // GetMergedCoinPool 获取合并后的币种池（AI500 + OI Top，去重）
 func GetMergedCoinPool(ai500Limit int) (*MergedCoinPool, error) {
-	return GetMergedCoinPoolWithOverride(ai500Limit, "", "")
-}
-
-// GetMergedCoinPoolWithOverride 使用自定义 URL 合并信号源
-func GetMergedCoinPoolWithOverride(ai500Limit int, coinPoolURL, oiTopURL string) (*MergedCoinPool, error) {
 	// 1. 获取AI500数据
-	var ai500TopSymbols []string
-	var err error
-	if strings.TrimSpace(coinPoolURL) != "" {
-		ai500TopSymbols, err = GetTopRatedCoinsWithURL(ai500Limit, coinPoolURL)
-	} else {
-		ai500TopSymbols, err = GetTopRatedCoins(ai500Limit)
-	}
+	ai500TopSymbols, err := GetTopRatedCoins(ai500Limit)
 	if err != nil {
 		log.Printf("⚠️  获取AI500数据失败: %v", err)
-		ai500TopSymbols = []string{}
+		ai500TopSymbols = []string{} // 失败时用空列表
 	}
 
 	// 2. 获取OI Top数据
-	var oiTopSymbols []string
-	if strings.TrimSpace(oiTopURL) != "" {
-		oiTopSymbols, err = GetOITopSymbolsWithURL(oiTopURL)
-	} else {
-		oiTopSymbols, err = GetOITopSymbols()
-	}
+	oiTopSymbols, err := GetOITopSymbols()
 	if err != nil {
 		log.Printf("⚠️  获取OI Top数据失败: %v", err)
-		oiTopSymbols = []string{}
+		oiTopSymbols = []string{} // 失败时用空列表
 	}
 
 	// 3. 合并并去重
 	symbolSet := make(map[string]bool)
 	symbolSources := make(map[string][]string)
 
+	// 添加AI500币种
 	for _, symbol := range ai500TopSymbols {
 		symbolSet[symbol] = true
 		symbolSources[symbol] = append(symbolSources[symbol], "ai500")
 	}
 
+	// 添加OI Top币种
 	for _, symbol := range oiTopSymbols {
 		if !symbolSet[symbol] {
 			symbolSet[symbol] = true
@@ -734,25 +621,15 @@ func GetMergedCoinPoolWithOverride(ai500Limit int, coinPoolURL, oiTopURL string)
 		symbolSources[symbol] = append(symbolSources[symbol], "oi_top")
 	}
 
+	// 转换为数组
 	var allSymbols []string
 	for symbol := range symbolSet {
 		allSymbols = append(allSymbols, symbol)
 	}
 
-	// 获取完整数据（用于决策日志展示，不影响主流程）
-	var ai500Coins []CoinInfo
-	if strings.TrimSpace(coinPoolURL) != "" {
-		ai500Coins, _ = GetCoinPoolWithURL(coinPoolURL)
-	} else {
-		ai500Coins, _ = GetCoinPool()
-	}
-
-	var oiTopPositions []OIPosition
-	if strings.TrimSpace(oiTopURL) != "" {
-		oiTopPositions, _ = GetOITopPositionsWithURL(oiTopURL)
-	} else {
-		oiTopPositions, _ = GetOITopPositions()
-	}
+	// 获取完整数据
+	ai500Coins, _ := GetCoinPool()
+	oiTopPositions, _ := GetOITopPositions()
 
 	merged := &MergedCoinPool{
 		AI500Coins:    ai500Coins,
